@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fantasy Night - Moonlit Record V3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;700&display=swap');
+        
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; overflow: hidden; font-family: 'Shippori Mincho', serif; background-color: #010305; user-select: none; }
+        #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: grab; }
+        #ui-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; pointer-events: none; z-index: 10; }
+        .interactive { pointer-events: auto; }
+
+        /* 上部中央：戻るボタン */
+        .top-center-area { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); pointer-events: auto; z-index: 30; }
+        .home-btn { background: rgba(15, 23, 42, 0.7); color: #94a3b8; border: 1px solid rgba(150, 220, 255, 0.2); padding: 8px 20px; border-radius: 20px; cursor: pointer; text-decoration: none; font-size: 0.9rem; transition: 0.3s; backdrop-filter: blur(8px); display: flex; align-items: center; gap: 6px; }
+        .home-btn:hover { background: rgba(56, 189, 248, 0.2); color: #fff; border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 0 15px rgba(56, 189, 248, 0.3); }
+
+        /* 左上：コントロールエリア */
+        .top-left-area { position: absolute; top: 20px; left: 20px; background: rgba(10, 25, 50, 0.65); padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(150, 220, 255, 0.3); color: #fff; display: flex; flex-direction: column; gap: 10px; backdrop-filter: blur(12px); z-index: 20; }
+        .file-actions { display: flex; gap: 12px; align-items: center; }
+        .file-label-btn, .file-save-btn { cursor: pointer; color: #38bdf8; font-weight: bold; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s; background: none; border: none; padding: 0; font-family: inherit; }
+        .file-label-btn:hover, .file-save-btn:hover { color: #7dd3fc; text-shadow: 0 0 8px rgba(56, 189, 248, 0.6); }
+        input[type="file"] { display: none; }
+
+        .slot-controls { display: flex; gap: 6px; }
+        .slot-btn { background: #1e293b; color: #94a3b8; border: 1px solid rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; }
+        .slot-btn.active { background: #38bdf8; color: #0f172a; font-weight: bold; box-shadow: 0 0 12px rgba(56, 189, 248, 0.5); }
+
+        /* 右上：本を開くボタン＆音声入力ボタン */
+        .top-right-area { position: absolute; top: 20px; right: 20px; pointer-events: auto; display: flex; gap: 10px; z-index: 20; }
+        
+        .action-btn {
+            background: rgba(15, 23, 42, 0.75);
+            color: #f1f5f9;
+            border: 1px solid rgba(217, 119, 6, 0.4);
+            padding: 10px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .action-btn:hover {
+            background: rgba(217, 119, 6, 0.25);
+            border-color: rgba(251, 191, 36, 0.8);
+            color: #fff;
+            box-shadow: 0 0 18px rgba(245, 158, 11, 0.4);
+            transform: translateY(-2px);
+        }
+        .action-btn.recording {
+            background: rgba(225, 29, 72, 0.3);
+            border-color: #f43f5e;
+            color: #ffe4e6;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.6); }
+            70% { box-shadow: 0 0 0 12px rgba(244, 63, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
+        }
+
+        /* 中央モーダル：半透明ベージュの貼り紙・羊皮紙風ノート */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 6, 18, 0.55);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .paper-note {
+            position: relative;
+            width: 90%;
+            max-width: 680px;
+            height: 75vh;
+            max-height: 650px;
+            background: linear-gradient(135deg, rgba(246, 238, 218, 0.92) 0%, rgba(235, 220, 190, 0.88) 100%);
+            border: 1px solid rgba(180, 140, 90, 0.6);
+            border-radius: 6px;
+            box-shadow: 
+                0 15px 35px rgba(0, 0, 0, 0.6),
+                inset 0 0 40px rgba(180, 140, 90, 0.25),
+                0 0 0 1px rgba(255, 255, 255, 0.2);
+            padding: 30px 25px 25px 35px;
+            display: flex;
+            flex-direction: column;
+            transform: scale(0.92) translateY(10px);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            color: #2c1e11;
+        }
+        .modal-overlay.active .paper-note {
+            transform: scale(1) translateY(0);
+        }
+
+        /* 貼り紙風テープ風装飾 */
+        .paper-note::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%) rotate(-1deg);
+            width: 110px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.45);
+            border: 1px solid rgba(210, 190, 150, 0.5);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            backdrop-filter: blur(2px);
+        }
+
+        .paper-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px dashed rgba(140, 100, 60, 0.3);
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+        }
+        .paper-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #4a321a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.05em;
+        }
+        .paper-status {
+            font-size: 0.8rem;
+            color: #785a3a;
+            font-style: italic;
+        }
+
+        /* テキスト表示・入力エリア */
+        .paper-body {
+            flex: 1;
+            width: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #paper-textarea {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 1.05rem;
+            line-height: 1.8;
+            color: #2d1d0f;
+            padding: 5px 10px 5px 0;
+            background-image: linear-gradient(transparent 95%, rgba(160, 120, 80, 0.15) 95%);
+            background-size: 100% 1.8em;
+            background-attachment: local;
+            overflow-y: auto;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* カスタムスクロールバー（古紙用） */
+        #paper-textarea::-webkit-scrollbar {
+            width: 6px;
+        }
+        #paper-textarea::-webkit-scrollbar-track {
+            background: rgba(180, 150, 110, 0.15);
+            border-radius: 3px;
+        }
+        #paper-textarea::-webkit-scrollbar-thumb {
+            background: rgba(140, 100, 60, 0.4);
+            border-radius: 3px;
+        }
+        #paper-textarea::-webkit-scrollbar-thumb:hover {
+            background: rgba(120, 80, 40, 0.6);
+        }
+
+        .paper-footer {
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(160, 120, 80, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .paper-footer-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .paper-save-btn {
+            background: rgba(140, 100, 60, 0.15);
+            color: #4a321a;
+            border: 1px solid rgba(140, 100, 60, 0.4);
+            padding: 6px 14px;
+            border-radius: 14px;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .paper-save-btn:hover {
+            background: rgba(140, 100, 60, 0.3);
+            color: #2c1e11;
+            border-color: rgba(140, 100, 60, 0.7);
+        }
+
+        .mic-indicator {
+            font-size: 0.85rem;
+            color: #be123c;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            visibility: hidden;
+        }
+        .mic-indicator.active {
+            visibility: visible;
+        }
+
+        .close-book-btn {
+            background: #4a321a;
+            color: #fef3c7;
+            border: none;
+            padding: 8px 22px;
+            border-radius: 18px;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+        }
+        .close-book-btn:hover {
+            background: #6b4723;
+            transform: translateY(-1px);
+            box-shadow: 0 5px 12px rgba(0,0,0,0.3);
+        }
+
+        /* 画面サイズ縮小時のレスポンシブ調整 */
+        @media (max-width: 600px) {
+            .paper-note { width: 94%; height: 80vh; padding: 20px 15px 15px 20px; }
+            .top-right-area { flex-direction: column; gap: 6px; }
+            .action-btn { padding: 8px 14px; font-size: 0.8rem; }
+            .paper-footer-left { flex-direction: column; align-items: flex-start; gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <div class="top-center-area">
+            <a href="quest.html" class="home-btn">🎃 戻る</a>
+        </div>
+
+        <div class="top-left-area interactive">
+            <div class="file-actions">
+                <label class="file-label-btn">
+                    📂 ファイル読込
+                    <input type="file" id="fileInput" accept=".txt,.md,.log,.json">
+                </label>
+                <button class="file-save-btn" onclick="exportToFile()">
+                    💾 ファイル保存
+                </button>
+            </div>
+            <div class="slot-controls">
+                <button class="slot-btn active" id="slot1-btn" onclick="switchSlot(1)">保存枠 1</button>
+                <button class="slot-btn" id="slot2-btn" onclick="switchSlot(2)">保存枠 2</button>
+            </div>
+        </div>
+
+        <div class="top-right-area">
+            <button class="action-btn" id="voice-toggle-btn" onclick="toggleVoiceInput()">
+                🎤 音声入力
+            </button>
+            <button class="action-btn" onclick="openBookModal()">
+                📖 本を開く
+            </button>
+        </div>
+    </div>
+
+    <!-- 中央のベージュ色の半透明貼り紙モーダル -->
+    <div class="modal-overlay" id="paperModal" onclick="onOverlayClick(event)">
+        <div class="paper-note" onclick="event.stopPropagation()">
+            <div class="paper-header">
+                <div class="paper-title">
+                    📜 今日の出来事・日記
+                </div>
+                <div class="paper-status" id="save-status-text">保存済み</div>
+            </div>
+
+            <div class="paper-body">
+                <textarea id="paper-textarea" placeholder="ここに今日の出来事やメモを入力するか、ファイル読み込み・音声入力を行ってください..."></textarea>
+            </div>
+
+            <div class="paper-footer">
+                <div class="paper-footer-left">
+                    <button class="paper-save-btn" onclick="exportToFile()">
+                        💾 ファイルに保存 (.txt)
+                    </button>
+                    <div class="mic-indicator" id="micIndicator">
+                        <span style="display:inline-block; width:8px; height:8px; background:#e11d48; border-radius:50%;"></span>
+                        音声聞き取り中...
+                    </div>
+                </div>
+                <button class="close-book-btn" onclick="closeBookModal()">本を閉じる ✖</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, fireParticles = [], fairies = [], jackMat, targetRotX = -0.15, targetRotY = 0, isMouseDown = false, prevMouse = { x: 0, y: 0 };
+        let currentSlot = 1;
+
+        // 音声認識用変数
+        let recognition = null;
+        let isRecording = false;
+        let sessionBaseText = ''; // 録音開始時点のテキストを保持
+
+        function createFaceTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#44ff44';
+            const cx = 128; const cy = 256;
+            ctx.beginPath(); ctx.moveTo(cx - 40, cy - 50); ctx.lineTo(cx - 10, cy + 5); ctx.lineTo(cx - 55, cy + 5); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(cx + 40, cy - 50); ctx.lineTo(cx + 55, cy + 5); ctx.lineTo(cx + 10, cy + 5); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(cx, cy + 15); ctx.lineTo(cx + 15, cy + 35); ctx.lineTo(cx - 15, cy + 35); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(cx - 70, cy + 50); ctx.lineTo(cx - 50, cy + 70); ctx.lineTo(cx - 30, cy + 55);
+            ctx.lineTo(cx, cy + 80); ctx.lineTo(cx + 30, cy + 55); ctx.lineTo(cx + 50, cy + 70);
+            ctx.lineTo(cx + 70, cy + 50); ctx.lineTo(cx + 55, cy + 90); ctx.lineTo(cx, cy + 100); ctx.lineTo(cx - 55, cy + 90);
+            ctx.fill();
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createJack(x, z, ry) {
+            const group = new THREE.Group();
+            const radius = 0.65;
+            const geo = new THREE.SphereGeometry(radius, 32, 32);
+            const pos = geo.attributes.position;
+            for(let i=0; i<pos.count; i++) {
+                const px = pos.getX(i); const pz = pos.getZ(i);
+                const angle = Math.atan2(pz, px);
+                const offset = Math.cos(angle * 8) * 0.05;
+                pos.setX(i, px + px*offset); pos.setZ(i, pz + pz*offset);
+            }
+            geo.computeVertexNormals();
+            geo.scale(1.1, 0.8, 1.1);
+            group.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x3d1f05, roughness: 0.9 })));
+            const faceTex = createFaceTexture();
+            jackMat = new THREE.MeshStandardMaterial({ map: faceTex, transparent: true, emissive: new THREE.Color(0x22ff22), emissiveMap: faceTex, emissiveIntensity: 2.5 });
+            group.add(new THREE.Mesh(geo.clone().scale(1.01, 1.01, 1.01), jackMat));
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.25), new THREE.MeshStandardMaterial({ color: 0x051105 }));
+            stem.position.y = 0.45; group.add(stem);
+            group.position.set(x, -0.1, z); group.rotation.y = ry; scene.add(group);
+        }
+
+        function createTent(x, z, ry) {
+            const group = new THREE.Group();
+            const tentGeo = new THREE.ConeGeometry(1.5, 2, 4);
+            const tentMat = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.8 });
+            const tent = new THREE.Mesh(tentGeo, tentMat);
+            tent.rotation.y = Math.PI/4; group.add(tent);
+            const pole = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2, 0.05), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+            pole.position.set(0, 0, 1); group.add(pole);
+            group.position.set(x, 0.5, z); group.rotation.y = ry; scene.add(group);
+        }
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x020818, 0.012);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 4, 14);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x010308);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            scene.add(new THREE.AmbientLight(0x2a3a5a, 2.0));
+            const moonLight = new THREE.DirectionalLight(0xb0d0ff, 3.5);
+            moonLight.position.set(-40, 70, -30);
+            scene.add(moonLight);
+            const fireLight = new THREE.PointLight(0xff7722, 5, 15);
+            fireLight.position.set(0, 0.8, 0);
+            scene.add(fireLight);
+
+            // 地面
+            const gCanvas = document.createElement('canvas'); gCanvas.width=512; gCanvas.height=512;
+            const gCtx = gCanvas.getContext('2d'); gCtx.fillStyle='#050a05'; gCtx.fillRect(0,0,512,512);
+            for(let i=0; i<12000; i++) {
+                gCtx.fillStyle=`rgba(15, ${35+Math.random()*25}, 25, 0.4)`; 
+                gCtx.fillRect(Math.random()*512, Math.random()*512, 1, 6); 
+            }
+            const groundTex = new THREE.CanvasTexture(gCanvas); groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping; groundTex.repeat.set(20, 20);
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1 }));
+            ground.rotation.x = -Math.PI/2; ground.position.y = -0.5; scene.add(ground);
+
+            // 小石
+            for(let i=0; i<60; i++) {
+                const s = 0.04 + Math.random() * 0.12;
+                const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true }));
+                const dist = 1.5 + Math.random() * 6; const ang = Math.random() * Math.PI * 2;
+                stone.position.set(Math.cos(ang)*dist, -0.48, Math.sin(ang)*dist);
+                stone.rotation.set(Math.random(), Math.random(), Math.random());
+                scene.add(stone);
+            }
+
+            // 焚き火
+            const logMat = new THREE.MeshStandardMaterial({ color: 0x1a110a });
+            for(let i=0; i<6; i++) {
+                const log = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2), logMat);
+                log.rotation.z = Math.PI/2; log.rotation.y = (i * Math.PI)/3;
+                log.position.y = -0.35; scene.add(log);
+            }
+            createJack(2.2, 1.8, -0.5);
+            createTent(-8, -12, 0.4);
+
+            // 妖精
+            for(let i=0; i<6; i++) {
+                const p = new THREE.PointLight(0x88ffff, 1.5, 4);
+                const spriteMat = new THREE.SpriteMaterial({ 
+                    map: (function() {
+                        const c = document.createElement('canvas'); c.width=64; c.height=64;
+                        const ctx = c.getContext('2d'); const g = ctx.createRadialGradient(32,32,0,32,32,32);
+                        g.addColorStop(0,'white'); g.addColorStop(0.4,'rgba(0,255,255,0.5)'); g.addColorStop(1,'transparent');
+                        ctx.fillStyle=g; ctx.fillRect(0,0,64,64); return new THREE.CanvasTexture(c);
+                    })(), blending: THREE.AdditiveBlending
+                });
+                const sprite = new THREE.Sprite(spriteMat); sprite.scale.set(0.35, 0.35, 1);
+                p.add(sprite);
+                p.userData = { angle: Math.random() * Math.PI * 2, radius: 2.5 + Math.random() * 4, speed: 0.01 + Math.random() * 0.015, yOff: Math.random() * 5 };
+                scene.add(p); fairies.push(p);
+            }
+
+            // 木々
+            function createTree(x, z) {
+                const group = new THREE.Group(); const h = 14 + Math.random()*12;
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, h, 8), new THREE.MeshStandardMaterial({ color: 0x081018 }));
+                trunk.position.y = h/2 - 0.5; group.add(trunk);
+                for(let j=0; j<3; j++) {
+                    const leaves = new THREE.Mesh(new THREE.SphereGeometry(3.5+Math.random(), 6, 4), new THREE.MeshStandardMaterial({ color: 0x0a1a2a, flatShading: true, transparent: true, opacity: 0.85 }));
+                    leaves.position.y = h - (j*3) - 0.5; group.add(leaves);
+                }
+                group.position.set(x, 0, z); scene.add(group);
+            }
+            for(let i=0; i<150; i++) { const a=Math.random()*Math.PI*2; const d=15+Math.random()*50; createTree(Math.cos(a)*d, Math.sin(a)*d); }
+
+            // 火の粉
+            const fTex = (function() {
+                const c = document.createElement('canvas'); c.width=64; c.height=64;
+                const ctx = c.getContext('2d'); const g = ctx.createRadialGradient(32,32,0,32,32,32);
+                g.addColorStop(0,'white'); g.addColorStop(0.2,'#ffaa00'); g.addColorStop(0.6,'#ff3300'); g.addColorStop(1,'transparent');
+                ctx.fillStyle=g; ctx.fillRect(0,0,64,64); return new THREE.CanvasTexture(c);
+            })();
+            const fMat = new THREE.SpriteMaterial({ map: fTex, blending: THREE.AdditiveBlending, transparent: true });
+            for(let i=0; i<70; i++) { const p = new THREE.Sprite(fMat.clone()); resetP(p); scene.add(p); fireParticles.push(p); }
+            function resetP(p) { p.position.set((Math.random()-0.5)*0.3, -0.2, (Math.random()-0.5)*0.3); p.userData = { life: Math.random(), speed: 0.02 + Math.random()*0.04 }; }
+
+            // 視点操作
+            const onStart = (x, y, target) => { 
+                if (target.closest('.interactive') || target.closest('button') || target.closest('.home-btn') || target.closest('.paper-note')) return; 
+                isMouseDown = true; prevMouse = { x, y }; 
+            };
+            window.addEventListener('mousedown', e => onStart(e.clientX, e.clientY, e.target));
+            window.addEventListener('touchstart', e => onStart(e.touches[0].clientX, e.touches[0].clientY, e.target));
+            window.addEventListener('mouseup', () => isMouseDown = false);
+            window.addEventListener('mousemove', e => {
+                if(!isMouseDown) return;
+                targetRotY -= (e.clientX - prevMouse.x)*0.004; targetRotX -= (e.clientY - prevMouse.y)*0.004;
+                targetRotX = Math.max(-0.4, Math.min(0.2, targetRotX)); prevMouse = { x: e.clientX, y: e.clientY };
+            });
+
+            function animate() {
+                requestAnimationFrame(animate);
+                camera.rotation.y += (targetRotY - camera.rotation.y)*0.05;
+                camera.rotation.x += (targetRotX - camera.rotation.x)*0.05;
+                fireParticles.forEach(p => {
+                    p.position.y += p.userData.speed; p.userData.life -= 0.015; p.scale.set(p.userData.life*1.2, p.userData.life*3, 1);
+                    if(p.userData.life <= 0) resetP(p);
+                });
+                fireLight.intensity = 6 + Math.sin(Date.now()*0.008) * 2;
+                if(jackMat) jackMat.emissiveIntensity = 2.5 + Math.sin(Date.now()*0.006) * 1.5;
+                fairies.forEach(f => {
+                    f.userData.angle += f.userData.speed;
+                    f.position.x = Math.cos(f.userData.angle) * f.userData.radius;
+                    f.position.z = Math.sin(f.userData.angle) * f.userData.radius;
+                    f.position.y = 1.2 + Math.sin(Date.now() * 0.0015 + f.userData.yOff) * 1.0;
+                });
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        // --- ノート・モーダル制御 ---
+        const paperModal = document.getElementById('paperModal');
+        const paperTextarea = document.getElementById('paper-textarea');
+        const saveStatusText = document.getElementById('save-status-text');
+
+        function openBookModal() {
+            paperModal.classList.add('active');
+        }
+
+        function closeBookModal() {
+            paperModal.classList.remove('active');
+            if (isRecording) {
+                stopVoiceInput();
+            }
+        }
+
+        function onOverlayClick(e) {
+            if (e.target === paperModal) {
+                closeBookModal();
+            }
+        }
+
+        // ローカルストレージ自動保存機能
+        function saveMemo() {
+            localStorage.setItem('fireTextSlot' + currentSlot, paperTextarea.value);
+            saveStatusText.innerText = "自動保存済み";
+            saveStatusText.style.color = "#785a3a";
+        }
+
+        paperTextarea.oninput = () => {
+            saveStatusText.innerText = "保存中...";
+            saveStatusText.style.color = "#d97706";
+            clearTimeout(paperTextarea.timeout);
+            paperTextarea.timeout = setTimeout(saveMemo, 500);
+        };
+
+        function switchSlot(num) {
+            currentSlot = num;
+            document.querySelectorAll('.slot-btn').forEach((b, i) => b.classList.toggle('active', i === num - 1));
+            const saved = localStorage.getItem('fireTextSlot' + num);
+            paperTextarea.value = saved || "";
+            saveStatusText.innerText = "保存枠 " + num + " 読み込み完了";
+            saveStatusText.style.color = "#785a3a";
+        }
+
+        // ファイル読み込み処理
+        document.getElementById('fileInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if(file) {
+                const reader = new FileReader();
+                reader.onload = (ev) => { 
+                    paperTextarea.value = ev.target.result; 
+                    saveMemo(); 
+                    openBookModal(); // ファイル読み込み時に自動で開く
+                };
+                reader.readAsText(file);
+            }
+        };
+
+        // ファイル書き出し（ダウンロード保存）処理
+        function exportToFile() {
+            const content = paperTextarea.value;
+            if (!content) {
+                alert("保存するテキストが入力されていません。");
+                return;
+            }
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            a.download = `diary_slot${currentSlot}_${year}${month}${day}.txt`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // --- 音声入力機能 (Web Speech API 重複連呼防止修正版) ---
+        function initVoiceRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("お使いのブラウザは音声入力に対応していません。Google Chrome等の対応ブラウザをお使いください。");
+                return false;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = false; // 重複連呼の原因となる途中経過をカット
+
+            recognition.onstart = () => {
+                isRecording = true;
+                sessionBaseText = paperTextarea.value; // 音声入力開始時点のテキストを保持
+                document.getElementById('voice-toggle-btn').classList.add('recording');
+                document.getElementById('voice-toggle-btn').innerHTML = '🔴 停止する';
+                document.getElementById('micIndicator').classList.add('active');
+                openBookModal();
+            };
+
+            recognition.onresult = (event) => {
+                let sessionTranscript = '';
+
+                // 今回のセッションで確定した文章を順番にスムーズに結合
+                for (let i = 0; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        sessionTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                if (sessionTranscript !== '') {
+                    const needsNewline = sessionBaseText.length > 0 && !sessionBaseText.endsWith('\n');
+                    // 開始時点の文章 ＋ 新しく認識された文章（繰り返し連呼を防ぎ1行で綺麗に納める）
+                    paperTextarea.value = sessionBaseText + (needsNewline ? '\n' : '') + sessionTranscript;
+                    saveMemo();
+                    paperTextarea.scrollTop = paperTextarea.scrollHeight;
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("音声認識エラー:", event.error);
+                stopVoiceInput();
+            };
+
+            recognition.onend = () => {
+                if (isRecording) {
+                    try { recognition.start(); } catch(e) {}
+                } else {
+                    stopVoiceInputUI();
+                }
+            };
+
+            return true;
+        }
+
+        function toggleVoiceInput() {
+            if (isRecording) {
+                stopVoiceInput();
+            } else {
+                startVoiceInput();
+            }
+        }
+
+        function startVoiceInput() {
+            if (!recognition) {
+                if (!initVoiceRecognition()) return;
+            }
+            try {
+                recognition.start();
+            } catch (e) {
+                console.log("開始エラー:", e);
+            }
+        }
+
+        function stopVoiceInput() {
+            isRecording = false;
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+            stopVoiceInputUI();
+        }
+
+        function stopVoiceInputUI() {
+            isRecording = false;
+            document.getElementById('voice-toggle-btn').classList.remove('recording');
+            document.getElementById('voice-toggle-btn').innerHTML = '🎤 音声入力';
+            document.getElementById('micIndicator').classList.remove('active');
+        }
+
+        window.onload = () => { 
+            init3D(); 
+            switchSlot(1); 
+        };
+
+        window.onresize = () => { 
+            camera.aspect = window.innerWidth / window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        };
+    </script>
+</body>
+</html>
